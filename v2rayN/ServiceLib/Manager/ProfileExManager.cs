@@ -44,52 +44,55 @@ public class ProfileExManager
 
     private async Task SaveQueueIndexIds()
     {
-        var cnt = _queIndexIds.Count;
-        if (cnt > 0)
+        List<string> idsToProcess;
+        lock (_queueLock)
         {
-            var lstExists = await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync();
-            List<ProfileExItem> lstInserts = [];
-            List<ProfileExItem> lstUpdates = [];
-
-            lock (_queueLock)
+            if (_queIndexIds.Count == 0)
             {
-                for (var i = 0; i < cnt; i++)
-                {
-                    var id = _queIndexIds.Dequeue();
-                    var item = lstExists.FirstOrDefault(t => t.IndexId == id);
-                    var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
-                    if (itemNew is null)
-                    {
-                        continue;
-                    }
+                return;
+            }
+            idsToProcess = [.. _queIndexIds.Distinct()];
+            _queIndexIds.Clear();
+        }
 
-                    if (item is not null)
-                    {
-                        lstUpdates.Add(itemNew);
-                    }
-                    else
-                    {
-                        lstInserts.Add(itemNew);
-                    }
-                }
+        var lstExists = await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync();
+        List<ProfileExItem> lstInserts = [];
+        List<ProfileExItem> lstUpdates = [];
+
+        foreach (var id in idsToProcess)
+        {
+            var item = lstExists.FirstOrDefault(t => t.IndexId == id);
+            var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
+            if (itemNew is null)
+            {
+                continue;
             }
 
-            try
+            if (item is not null)
             {
-                if (lstInserts.Count > 0)
-                {
-                    await SQLiteHelper.Instance.InsertAllAsync(lstInserts);
-                }
+                lstUpdates.Add(itemNew);
+            }
+            else
+            {
+                lstInserts.Add(itemNew);
+            }
+        }
 
-                if (lstUpdates.Count > 0)
-                {
-                    await SQLiteHelper.Instance.UpdateAllAsync(lstUpdates);
-                }
-            }
-            catch (Exception ex)
+        try
+        {
+            if (lstInserts.Count > 0)
             {
-                Logging.SaveLog(_tag, ex);
+                await SQLiteHelper.Instance.InsertAllAsync(lstInserts);
             }
+
+            if (lstUpdates.Count > 0)
+            {
+                await SQLiteHelper.Instance.UpdateAllAsync(lstUpdates);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog(_tag, ex);
         }
     }
 
@@ -117,6 +120,10 @@ public class ProfileExManager
     {
         await SQLiteHelper.Instance.ExecuteAsync($"delete from ProfileExItem ");
         _lstProfileEx = [];
+        lock (_queueLock)
+        {
+            _queIndexIds.Clear();
+        }
     }
 
     public async Task SaveTo()

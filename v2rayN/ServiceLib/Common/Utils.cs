@@ -793,12 +793,21 @@ public class Utils
     {
         try
         {
-            if (TcpBindAvailable(defaultPort))
+            var startPort = defaultPort is > 0 and < Global.MaxPort ? defaultPort : 10240;
+            if (TcpBindAvailable(startPort))
             {
-                return defaultPort;
+                return startPort;
             }
 
-            for (var port = defaultPort; port < Global.MaxPort; port++)
+            for (var port = startPort + 1; port < Global.MaxPort; port++)
+            {
+                if (TcpBindAvailable(port))
+                {
+                    return port;
+                }
+            }
+
+            for (var port = 10240; port < startPort; port++)
             {
                 if (TcpBindAvailable(port))
                 {
@@ -810,11 +819,16 @@ public class Utils
         {
         }
 
-        return 59090;
+        return TcpBindAvailable(59090) ? 59090 : 0;
     }
 
     private static bool TcpBindAvailable(int port)
     {
+        if (port is <= 0 or >= Global.MaxPort)
+        {
+            return false;
+        }
+
         try
         {
             TcpListener listener = new(IPAddress.Loopback, port);
