@@ -789,50 +789,44 @@ public class Utils
 
     #region Speed Test
 
-    private static bool PortInUse(int port)
-    {
-        try
-        {
-            var (lstIpEndPoints, lstTcpConns) = GetActiveNetworkInfo();
-
-            if (lstIpEndPoints?.FindIndex(it => it.Port == port) >= 0)
-            {
-                return true;
-            }
-
-            if (lstTcpConns?.FindIndex(it => it.LocalEndPoint.Port == port) >= 0)
-            {
-                return true;
-            }
-        }
-        catch (Exception ex)
-        {
-            Logging.SaveLog(_tag, ex);
-        }
-
-        return false;
-    }
-
     public static int GetFreePort(int defaultPort)
     {
         try
         {
-            if (!PortInUse(defaultPort))
+            if (TcpBindAvailable(defaultPort))
             {
                 return defaultPort;
             }
 
-            TcpListener l = new(IPAddress.Loopback, 0);
-            l.Start();
-            var port = ((IPEndPoint)l.LocalEndpoint).Port;
-            l.Stop();
-            return port;
+            for (var port = defaultPort; port < Global.MaxPort; port++)
+            {
+                if (TcpBindAvailable(port))
+                {
+                    return port;
+                }
+            }
         }
         catch
         {
         }
 
         return 59090;
+    }
+
+    private static bool TcpBindAvailable(int port)
+    {
+        try
+        {
+            TcpListener listener = new(IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (Exception)
+        {
+            // Ports in the Windows dynamic exclusion range are common; do not log them as exceptions.
+            return false;
+        }
     }
 
     public static (List<IPEndPoint> endpoints, List<TcpConnectionInformation> connections) GetActiveNetworkInfo()
