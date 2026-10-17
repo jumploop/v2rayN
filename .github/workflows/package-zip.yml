@@ -11,7 +11,7 @@ on:
         type: string
     secrets:
       GPG_PRIVATE_KEY:
-        required: false
+        required: true
 
 permissions:
   contents: write
