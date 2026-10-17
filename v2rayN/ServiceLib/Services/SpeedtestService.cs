@@ -127,6 +127,19 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             Logging.SaveLog(_tag, ex);
             _ = UpdateFunc("", ex.Message);
         }
+        finally
+        {
+            var uncompleted = lstSelected.Where(it => !completedIds.ContainsKey(it.IndexId)).ToList();
+            if (uncompleted.Count > 0)
+            {
+                foreach (var it in uncompleted)
+                {
+                    ProfileExManager.Instance.SetTestDelay(it.IndexId, -1);
+                    await UpdateFunc(it.IndexId, "-1", ResUI.SpeedtestingSkip);
+                    completedIds.TryAdd(it.IndexId, 0);
+                }
+            }
+        }
     }
 
     private async Task<List<ServerTestItem>> GetClearItem(ESpeedActionType actionType, List<ProfileItem> selecteds)
@@ -260,7 +273,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
 
         //Retest the failed part
         var pageSizeNext = pageSize / 2;
-        if (lstFailed.Count > 0 && pageSizeNext > 0)
+        if (lstFailed.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -450,7 +463,10 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
                 processService = await CoreManager.Instance.LoadCoreConfigSpeedtest(it);
                 if (processService is null)
                 {
-                    await UpdateFunc(it.IndexId, "", ResUI.FailedToRunCore);
+                    ProfileExManager.Instance.SetTestDelay(it.IndexId, -1);
+                    ProfileExManager.Instance.SetTestMessage(it.IndexId, ResUI.FailedToRunCore);
+                    await UpdateFunc(it.IndexId, "-1", ResUI.FailedToRunCore);
+                    completedIds.TryAdd(it.IndexId, 0);
                     return;
                 }
 
@@ -476,6 +492,10 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             catch (Exception ex)
             {
                 Logging.SaveLog(_tag, ex);
+                ProfileExManager.Instance.SetTestDelay(it.IndexId, -1);
+                ProfileExManager.Instance.SetTestMessage(it.IndexId, ex.Message);
+                await UpdateFunc(it.IndexId, "-1", ex.Message);
+                completedIds.TryAdd(it.IndexId, 0);
             }
             finally
             {

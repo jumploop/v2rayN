@@ -41,6 +41,29 @@ public class SpeedtestServiceBatchTests
         }
     }
 
+    [Test]
+    public async Task RunMixedTestAsync_WhenCoreFails_ShouldMarkItemAsFailedAndNotStuck()
+    {
+        List<SpeedTestResult> results = [];
+        var service = new SpeedtestService(new Config { SpeedTestItem = new() }, result =>
+        {
+            results.Add(result);
+            return Task.CompletedTask;
+        });
+
+        var completedIds = new ConcurrentDictionary<string, byte>();
+        var testItems = new List<ServerTestItem>
+        {
+            new() { IndexId = "test-fail-1", AllowTest = true }
+        };
+
+        var method = typeof(SpeedtestService).GetMethod("RunMixedTestAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)method.Invoke(service, [testItems, completedIds, 1, false, CancellationToken.None])!;
+
+        await completedIds.ContainsKey("test-fail-1").Should().BeTrue();
+        await results.Any(r => r.IndexId == "test-fail-1" && r.Delay == "-1").Should().BeTrue();
+    }
+
     private static List<ServerTestItem> CreateProfiles() =>
     [
         new() { CoreType = ECoreType.Xray },

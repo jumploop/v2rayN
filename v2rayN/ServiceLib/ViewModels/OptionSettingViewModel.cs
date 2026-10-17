@@ -237,15 +237,20 @@ public partial class OptionSettingViewModel : MyReactiveObject, ICloseable
 
         foreach (var it in Enum.GetValues<EConfigType>())
         {
-            if (_config.CoreTypeItem.FindIndex(t => t.ConfigType == it) >= 0)
+            var existing = _config.CoreTypeItem.FirstOrDefault(t => t.ConfigType == it);
+            if (existing != null)
             {
+                if (Global.SingboxOnlyConfigType.Contains(it) && existing.CoreType != ECoreType.sing_box)
+                {
+                    existing.CoreType = ECoreType.sing_box;
+                }
                 continue;
             }
 
             _config.CoreTypeItem.Add(new CoreTypeItem()
             {
                 ConfigType = it,
-                CoreType = ECoreType.Xray
+                CoreType = Global.SingboxOnlyConfigType.Contains(it) ? ECoreType.sing_box : ECoreType.Xray
             });
         }
         _config.CoreTypeItem.ForEach(it =>

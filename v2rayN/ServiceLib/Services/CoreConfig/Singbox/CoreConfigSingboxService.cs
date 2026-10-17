@@ -168,6 +168,12 @@ public partial class CoreConfigSingboxService(CoreConfigContext context)
                 _coreConfig.route.rules.Add(rule);
             }
 
+            if (_coreConfig.inbounds.Count == 0)
+            {
+                ret.Msg = ResUI.FailedGenDefaultConfiguration;
+                return ret;
+            }
+
             ApplyOutboundBindInterface();
             ApplyOutboundSendThrough();
             ret.Success = true;

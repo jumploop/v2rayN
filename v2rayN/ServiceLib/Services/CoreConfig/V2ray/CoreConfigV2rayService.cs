@@ -202,6 +202,12 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
                 _coreConfig.routing.rules.Add(rule);
             }
 
+            if (_coreConfig.inbounds.Count == 0)
+            {
+                ret.Msg = ResUI.FailedGenDefaultConfiguration;
+                return ret;
+            }
+
             if (_config.CoreBasicItem.EnableFragment)
             {
                 ApplyOutboundFragment();
