@@ -5,6 +5,7 @@ public class ProfileExManager
     private static readonly Lazy<ProfileExManager> _instance = new(() => new());
     private ConcurrentBag<ProfileExItem> _lstProfileEx = [];
     private readonly Queue<string> _queIndexIds = new();
+    private readonly Lock _queueLock = new();
     public static ProfileExManager Instance => _instance.Value;
     private static readonly string _tag = "ProfileExHandler";
 
@@ -32,9 +33,12 @@ public class ProfileExManager
 
     private void IndexIdEnqueue(string indexId)
     {
-        if (indexId.IsNotEmpty() && !_queIndexIds.Contains(indexId))
+        lock (_queueLock)
         {
-            _queIndexIds.Enqueue(indexId);
+            if (indexId.IsNotEmpty() && !_queIndexIds.Contains(indexId))
+            {
+                _queIndexIds.Enqueue(indexId);
+            }
         }
     }
 
@@ -47,23 +51,26 @@ public class ProfileExManager
             List<ProfileExItem> lstInserts = [];
             List<ProfileExItem> lstUpdates = [];
 
-            for (var i = 0; i < cnt; i++)
+            lock (_queueLock)
             {
-                var id = _queIndexIds.Dequeue();
-                var item = lstExists.FirstOrDefault(t => t.IndexId == id);
-                var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
-                if (itemNew is null)
+                for (var i = 0; i < cnt; i++)
                 {
-                    continue;
-                }
+                    var id = _queIndexIds.Dequeue();
+                    var item = lstExists.FirstOrDefault(t => t.IndexId == id);
+                    var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
+                    if (itemNew is null)
+                    {
+                        continue;
+                    }
 
-                if (item is not null)
-                {
-                    lstUpdates.Add(itemNew);
-                }
-                else
-                {
-                    lstInserts.Add(itemNew);
+                    if (item is not null)
+                    {
+                        lstUpdates.Add(itemNew);
+                    }
+                    else
+                    {
+                        lstInserts.Add(itemNew);
+                    }
                 }
             }
 
