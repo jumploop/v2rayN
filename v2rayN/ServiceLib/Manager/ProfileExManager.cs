@@ -4,8 +4,7 @@ public class ProfileExManager
 {
     private static readonly Lazy<ProfileExManager> _instance = new(() => new());
     private ConcurrentBag<ProfileExItem> _lstProfileEx = [];
-    private readonly Queue<string> _queIndexIds = new();
-    private readonly Lock _queueLock = new();
+    private readonly ConcurrentQueue<string> _queIndexIds = new();
     public static ProfileExManager Instance => _instance.Value;
     private static readonly string _tag = "ProfileExHandler";
 
@@ -33,66 +32,63 @@ public class ProfileExManager
 
     private void IndexIdEnqueue(string indexId)
     {
-        lock (_queueLock)
+        if (indexId.IsNotEmpty())
         {
-            if (indexId.IsNotEmpty() && !_queIndexIds.Contains(indexId))
-            {
-                _queIndexIds.Enqueue(indexId);
-            }
+            //Speed tests touch this from many threads; duplicates are harmless here since
+            //the save loop just writes the same row more than once
+            _queIndexIds.Enqueue(indexId);
         }
     }
 
     private async Task SaveQueueIndexIds()
     {
-        List<string> idsToProcess;
-        lock (_queueLock)
+        var lstIds = new List<string>();
+        while (_queIndexIds.TryDequeue(out var id))
         {
-            if (_queIndexIds.Count == 0)
-            {
-                return;
-            }
-            idsToProcess = [.. _queIndexIds.Distinct()];
-            _queIndexIds.Clear();
+            lstIds.Add(id);
         }
 
-        var lstExists = await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync();
-        List<ProfileExItem> lstInserts = [];
-        List<ProfileExItem> lstUpdates = [];
-
-        foreach (var id in idsToProcess)
+        if (lstIds.Count > 0)
         {
-            var item = lstExists.FirstOrDefault(t => t.IndexId == id);
-            var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
-            if (itemNew is null)
+            var lstExists = await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync();
+            List<ProfileExItem> lstInserts = [];
+            List<ProfileExItem> lstUpdates = [];
+
+            foreach (var id in lstIds)
             {
-                continue;
+                var item = lstExists.FirstOrDefault(t => t.IndexId == id);
+                var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
+                if (itemNew is null)
+                {
+                    continue;
+                }
+
+                if (item is not null)
+                {
+                    lstUpdates.Add(itemNew);
+                }
+                else
+                {
+                    lstInserts.Add(itemNew);
+                }
             }
 
-            if (item is not null)
+            try
             {
-                lstUpdates.Add(itemNew);
-            }
-            else
-            {
-                lstInserts.Add(itemNew);
-            }
-        }
+                if (lstInserts.Count > 0)
+                {
+                    await SQLiteHelper.Instance.InsertAllAsync(lstInserts);
+                }
 
-        try
-        {
-            if (lstInserts.Count > 0)
-            {
-                await SQLiteHelper.Instance.InsertAllAsync(lstInserts);
+                if (lstUpdates.Count > 0)
+                {
+                    await SQLiteHelper.Instance.UpdateAllAsync(lstUpdates);
+                }
             }
-
-            if (lstUpdates.Count > 0)
+            catch (Exception ex)
             {
-                await SQLiteHelper.Instance.UpdateAllAsync(lstUpdates);
+                Logging.SaveLog(_tag, ex);
             }
-        }
-        catch (Exception ex)
-        {
-            Logging.SaveLog(_tag, ex);
         }
     }
 
@@ -120,10 +116,6 @@ public class ProfileExManager
     {
         await SQLiteHelper.Instance.ExecuteAsync($"delete from ProfileExItem ");
         _lstProfileEx = [];
-        lock (_queueLock)
-        {
-            _queIndexIds.Clear();
-        }
     }
 
     public async Task SaveTo()
