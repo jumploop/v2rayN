@@ -831,9 +831,15 @@ public class Utils
 
         try
         {
-            TcpListener listener = new(IPAddress.Loopback, port);
-            listener.Start();
-            listener.Stop();
+            using (var tcp = new TcpListener(IPAddress.Loopback, port))
+            {
+                tcp.Start();
+                tcp.Stop();
+            }
+            using (var udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, port)))
+            {
+                udp.Close();
+            }
             return true;
         }
         catch (Exception)

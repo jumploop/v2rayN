@@ -106,12 +106,12 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
                 return ret;
             }
 
-            var (lstIpEndPoints, lstTcpConns) = Utils.GetActiveNetworkInfo();
-
             GenLog();
             _coreConfig.inbounds.Clear();
             _coreConfig.outbounds.Clear();
             _coreConfig.routing.rules.Clear();
+            _coreConfig.routing.domainStrategy = Global.AsIs;
+            _coreConfig.outbounds.Add(new Outbounds4Ray { protocol = "freedom", tag = Global.DirectTag });
 
             var initPort = AppManager.Instance.GetLocalPort(EInboundProtocol.speedtest);
 
@@ -132,29 +132,12 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
                     continue;
                 }
 
-                //find unused port
-                var port = initPort;
-                for (var k = initPort; k < Global.MaxPort; k++)
-                {
-                    if (lstIpEndPoints?.FindIndex(_it => _it.Port == k) >= 0)
-                    {
-                        continue;
-                    }
-                    if (lstTcpConns?.FindIndex(_it => _it.LocalEndPoint.Port == k) >= 0)
-                    {
-                        continue;
-                    }
-                    //found
-                    port = k;
-                    initPort = port + 1;
-                    break;
-                }
-
-                //Port In Used
-                if (lstIpEndPoints?.FindIndex(_it => _it.Port == port) >= 0)
+                var port = Utils.GetFreePort(initPort);
+                if (port <= 0)
                 {
                     continue;
                 }
+                initPort = port + 1;
                 it.Port = port;
                 it.AllowTest = true;
 
@@ -218,7 +201,6 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
             }
             ApplyOutboundBindInterface();
             ApplyOutboundSendThrough();
-            //ret.Msg =string.Format(ResUI.SuccessfulConfiguration"), node.getSummary());
             ret.Success = true;
             ret.Data = ApplyCustomOutboundReplace();
             return ret;

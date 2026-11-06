@@ -93,12 +93,16 @@ public partial class CoreConfigSingboxService(CoreConfigContext context)
                 return ret;
             }
 
-            var (lstIpEndPoints, lstTcpConns) = Utils.GetActiveNetworkInfo();
-
             GenLog();
             GenMinimizedDns();
             _coreConfig.inbounds.Clear();
-            _coreConfig.outbounds.RemoveAt(0);
+            _coreConfig.route.rules.Clear();
+
+            // Ensure direct outbound exists and is available for internal DNS/system resolution
+            if (_coreConfig.outbounds.All(o => o.tag != Global.DirectTag))
+            {
+                _coreConfig.outbounds.Add(new Outbound4Sbox { type = "direct", tag = Global.DirectTag });
+            }
 
             var initPort = AppManager.Instance.GetLocalPort(EInboundProtocol.speedtest);
 
@@ -119,29 +123,12 @@ public partial class CoreConfigSingboxService(CoreConfigContext context)
                     continue;
                 }
 
-                //find unused port
-                var port = initPort;
-                for (var k = initPort; k < Global.MaxPort; k++)
-                {
-                    if (lstIpEndPoints?.FindIndex(_it => _it.Port == k) >= 0)
-                    {
-                        continue;
-                    }
-                    if (lstTcpConns?.FindIndex(_it => _it.LocalEndPoint.Port == k) >= 0)
-                    {
-                        continue;
-                    }
-                    //found
-                    port = k;
-                    initPort = port + 1;
-                    break;
-                }
-
-                //Port In Used
-                if (lstIpEndPoints?.FindIndex(_it => _it.Port == port) >= 0)
+                var port = Utils.GetFreePort(initPort);
+                if (port <= 0)
                 {
                     continue;
                 }
+                initPort = port + 1;
                 it.Port = port;
                 it.AllowTest = true;
 
@@ -173,6 +160,9 @@ public partial class CoreConfigSingboxService(CoreConfigContext context)
                 ret.Msg = ResUI.FailedGenDefaultConfiguration;
                 return ret;
             }
+
+            // Route any unmatched traffic (such as core internal direct DNS) to direct
+            _coreConfig.route.final = Global.DirectTag;
 
             ApplyOutboundBindInterface();
             ApplyOutboundSendThrough();

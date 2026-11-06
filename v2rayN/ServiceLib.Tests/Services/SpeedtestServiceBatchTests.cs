@@ -1,3 +1,7 @@
+using ServiceLib.Models.CoreConfigs;
+using ServiceLib.Services.CoreConfig;
+using ServiceLib.Tests.CoreConfig;
+
 namespace ServiceLib.Tests.Services;
 
 public class SpeedtestServiceBatchTests
@@ -42,6 +46,21 @@ public class SpeedtestServiceBatchTests
     }
 
     [Test]
+    public async Task Batches_WithOtherCoreTypes_ShouldBatchOnlyBatchableCores()
+    {
+        var profiles = new List<ServerTestItem>
+        {
+            new() { CoreType = ECoreType.Xray },
+            new() { CoreType = ECoreType.sing_box },
+            new() { CoreType = ECoreType.mihomo },
+        };
+        var batches = GetBatches(profiles, 10);
+        // mihomo is handled separately via individual mixed tests, not batched into Xray/sing_box
+        await batches.Count.Should().BeEqualTo(2);
+        await batches.SelectMany(b => b).Count().Should().BeEqualTo(2);
+    }
+
+    [Test]
     public async Task RunMixedTestAsync_WhenCoreFails_ShouldMarkItemAsFailedAndNotStuck()
     {
         List<SpeedTestResult> results = [];
@@ -62,6 +81,86 @@ public class SpeedtestServiceBatchTests
 
         await completedIds.ContainsKey("test-fail-1").Should().BeTrue();
         await results.Any(r => r.IndexId == "test-fail-1" && r.Delay == "-1").Should().BeTrue();
+    }
+
+    [Test]
+    public async Task SingboxSpeedtestConfig_ShouldHaveDirectOutboundAndRouteFinal()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.sing_box);
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+
+        var node1 = new ProfileItem
+        {
+            IndexId = "node1",
+            Remarks = "tuic-node1",
+            ConfigType = EConfigType.TUIC,
+            Address = "1.2.3.4",
+            Port = 443,
+            CoreType = ECoreType.sing_box,
+            Password = "pass"
+        };
+        var context = CoreConfigTestFactory.CreateContext(config, node1, ECoreType.sing_box);
+        context.AllProxiesMap[node1.IndexId] = node1;
+
+        var selecteds = new List<ServerTestItem>
+        {
+            new()
+            {
+                IndexId = node1.IndexId,
+                Address = node1.Address,
+                Port = node1.Port,
+                ConfigType = node1.ConfigType,
+                Profile = node1,
+                CoreType = ECoreType.sing_box
+            }
+        };
+
+        var result = new CoreConfigSingboxService(context).GenerateClientSpeedtestConfig(selecteds);
+        await result.Success.Should().BeTrue();
+
+        var singboxConfig = JsonUtils.Deserialize<SingboxConfig>(result.Data!.ToString())!;
+        await singboxConfig.outbounds.Should().Contain(o => o.tag == Global.DirectTag);
+        await singboxConfig.route.final.Should().BeEqualTo(Global.DirectTag);
+        await selecteds.First().Port.Should().BeGreaterThan(0);
+        await selecteds.First().AllowTest.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task V2raySpeedtestConfig_ShouldAllocateValidPorts()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+
+        var node1 = new ProfileItem
+        {
+            IndexId = "node-vless",
+            Remarks = "vless-node1",
+            ConfigType = EConfigType.VLESS,
+            Address = "1.2.3.4",
+            Port = 443,
+            CoreType = ECoreType.Xray,
+            Password = "uuid"
+        };
+        var context = CoreConfigTestFactory.CreateContext(config, node1, ECoreType.Xray);
+        context.AllProxiesMap[node1.IndexId] = node1;
+
+        var selecteds = new List<ServerTestItem>
+        {
+            new()
+            {
+                IndexId = node1.IndexId,
+                Address = node1.Address,
+                Port = node1.Port,
+                ConfigType = node1.ConfigType,
+                Profile = node1,
+                CoreType = ECoreType.Xray
+            }
+        };
+
+        var result = new CoreConfigV2rayService(context).GenerateClientSpeedtestConfig(selecteds);
+        await result.Success.Should().BeTrue();
+        await selecteds.First().Port.Should().BeGreaterThan(0);
+        await selecteds.First().AllowTest.Should().BeTrue();
     }
 
     private static List<ServerTestItem> CreateProfiles() =>

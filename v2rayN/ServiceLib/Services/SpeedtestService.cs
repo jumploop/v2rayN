@@ -258,7 +258,15 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         {
             pageSize = Math.Min(lstSelected.Count, _speedTestPageSize);
         }
-        var lstTest = GetTestBatchItem(lstSelected, pageSize);
+
+        var lstOthers = lstSelected.Where(t => t.CoreType is not ECoreType.Xray and not ECoreType.sing_box).ToList();
+        var lstBatchable = lstSelected.Where(t => t.CoreType is ECoreType.Xray or ECoreType.sing_box).ToList();
+
+        var othersTask = lstOthers.Count > 0
+            ? RunMixedTestAsync(lstOthers, completedIds, _config.SpeedTestItem.MixedConcurrencyCount, false, ct)
+            : Task.CompletedTask;
+
+        var lstTest = GetTestBatchItem(lstBatchable, pageSize);
 
         List<ServerTestItem> lstFailed = [];
         foreach (var lst in lstTest)
@@ -268,8 +276,19 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             {
                 lstFailed.AddRange(lst);
             }
+            else
+            {
+                var failedInBatch = lst.Where(it => it.AllowTest && it.Delay <= 0).ToList();
+                foreach (var failed in failedInBatch)
+                {
+                    completedIds.TryRemove(failed.IndexId, out _);
+                }
+                lstFailed.AddRange(failedInBatch);
+            }
             await Task.Delay(_delayInterval, ct);
         }
+
+        await othersTask;
 
         //Retest the failed part
         var pageSizeNext = pageSize / 2;
@@ -303,9 +322,10 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             }
             await Task.Delay(1000, ct);
 
+            var maxConcurrency = Math.Max(_config.SpeedTestItem.MixedConcurrencyCount, 10);
             var parallelOptions = new ParallelOptions
             {
-                MaxDegreeOfParallelism = selecteds.Count,
+                MaxDegreeOfParallelism = Math.Min(selecteds.Count, maxConcurrency),
                 CancellationToken = ct,
             };
 
@@ -367,6 +387,15 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             {
                 lstFailed.AddRange(lst);
             }
+            else
+            {
+                var failedInBatch = lst.Where(it => it.AllowTest && it.Delay <= 0).ToList();
+                foreach (var failed in failedInBatch)
+                {
+                    completedIds.TryRemove(failed.IndexId, out _);
+                }
+                lstFailed.AddRange(failedInBatch);
+            }
             await Task.Delay(_delayInterval, ct);
         }
 
@@ -394,9 +423,10 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             }
             await Task.Delay(1000, ct);
 
+            var maxConcurrency = Math.Max(_config.SpeedTestItem.MixedConcurrencyCount, 10);
             var parallelOptions = new ParallelOptions
             {
-                MaxDegreeOfParallelism = selecteds.Count,
+                MaxDegreeOfParallelism = Math.Min(selecteds.Count, maxConcurrency),
                 CancellationToken = ct,
             };
 
@@ -512,6 +542,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
     {
         var webProxy = new WebProxy($"socks5://{Global.Loopback}:{it.Port}");
         var responseTime = await ConnectionHandler.GetRealPingTime(webProxy, ct);
+        it.Delay = responseTime;
 
         ProfileExManager.Instance.SetTestDelay(it.IndexId, responseTime);
         await UpdateFunc(it.IndexId, responseTime.ToString());
@@ -560,6 +591,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
     {
         var udpService = UdpTestService.CreateFromTarget(_config?.SpeedTestItem.UdpTestTarget, out var udpTestUrl);
         var responseTime = (int)(await udpService.SendUdpRequestAsync(udpTestUrl, it.Port, ct)).TotalMilliseconds;
+        it.Delay = responseTime;
 
         ProfileExManager.Instance.SetTestDelay(it.IndexId, responseTime);
         await UpdateFunc(it.IndexId, responseTime.ToString());
