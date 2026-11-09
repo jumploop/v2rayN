@@ -17,6 +17,13 @@ public class SpeedtestServiceResultTests
         await profileEx.Speed.Should().BeEqualTo((decimal)expected);
     }
 
+    [Test]
+    public async Task SpeedtestingRetryingDelay_ShouldHaveValidMessage()
+    {
+        await ResUI.SpeedtestingRetryingDelay.IsNotEmpty().Should().BeTrue();
+        await new ServerTestItem().Delay.Should().BeEqualTo(-1);
+    }
+
     private static Task SetTestResult(List<ServerTestItem> items, ESpeedActionType actionType, string message)
     {
         var service = new SpeedtestService(new Config { SpeedTestItem = new() }, _ => Task.CompletedTask);

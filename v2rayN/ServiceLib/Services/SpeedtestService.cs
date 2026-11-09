@@ -504,6 +504,40 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
                 await Task.Delay(1000, innerCt);
 
                 var delay = await DoRealPing(it, completedIds, innerCt);
+                if (delay <= 0)
+                {
+                    // 二次机会：延迟-1时重启内核重测一次，防止并发挤兑误杀
+                    await UpdateFunc(it.IndexId, "-1", ResUI.SpeedtestingRetryingDelay);
+                    try
+                    {
+                        if (processService != null)
+                        {
+                            await processService.StopAsync();
+                            processService = null;
+                        }
+
+                        completedIds.TryRemove(it.IndexId, out _);
+                        processService = await CoreManager.Instance.LoadCoreConfigSpeedtest(it);
+                        if (processService != null)
+                        {
+                            await Task.Delay(1000, innerCt);
+                            delay = await DoRealPing(it, completedIds, innerCt);
+                        }
+                        else
+                        {
+                            completedIds.TryAdd(it.IndexId, 0);
+                        }
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex2)
+                    {
+                        Logging.SaveLog(_tag, ex2);
+                    }
+                }
+
                 if (blSpeedTest)
                 {
                     if (delay > 0)
@@ -514,6 +548,14 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
                     {
                         await UpdateFunc(it.IndexId, "", ResUI.SpeedtestingSkip);
                     }
+                }
+                else if (delay > 0)
+                {
+                    await UpdateFunc(it.IndexId, delay.ToString(), ResUI.SpeedtestingCompleted);
+                }
+                else
+                {
+                    await UpdateFunc(it.IndexId, "-1", ResUI.SpeedtestingSkip);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

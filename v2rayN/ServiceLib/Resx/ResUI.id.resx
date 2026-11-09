@@ -1833,4 +1833,7 @@ Tindakan "Ambil sertifikat" mungkin gagal jika sertifikat self-signed digunakan 
   <data name="TransportPathTip6" xml:space="preserve">
     <value>Folder jarak jauh XDRIVE</value>
   </data>
+  <data name="SpeedtestingRetryingDelay" xml:space="preserve">
+    <value>Mencoba ulang tes latensi...</value>
+  </data>
 </root>
