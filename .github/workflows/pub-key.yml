@@ -20,7 +20,6 @@ permissions:
 
 jobs:
   publish:
-    if: secrets.GPG_PRIVATE_KEY != ''
     runs-on: ubuntu-latest
     steps:
     - name: Import GPG private key
@@ -29,6 +28,10 @@ jobs:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       run: |
         set -euo pipefail
+        if [[ -z "${GPG_PRIVATE_KEY:-}" ]]; then
+          echo "No GPG private key provided, skipping import."
+          exit 0
+        fi
         install -m 700 -d ~/.gnupg
         printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
 
@@ -36,11 +39,25 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        fingerprint="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
-        [[ -n "$fingerprint" ]] || { echo "No GPG secret key found."; exit 1; }
+        fingerprint="$(gpg --batch --list-secret-keys --with-colons 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }' || true)"
+        if [[ -z "$fingerprint" ]]; then
+          echo "No GPG secret key found, skipping export."
+          exit 0
+        fi
         gpg --batch --armor --export "$fingerprint" > v2rayN-public-key.asc
 
+    - name: Check public key exists
+      id: check-pub
+      shell: bash
+      run: |
+        if [[ -f v2rayN-public-key.asc ]]; then
+          echo "has_pub=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_pub=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Upload GPG public key to release
+      if: steps.check-pub.outputs.has_pub == 'true'
       uses: svenstaro/upload-release-action@v2
       with:
         file: v2rayN-public-key.asc

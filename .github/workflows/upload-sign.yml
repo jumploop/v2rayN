@@ -36,20 +36,28 @@ jobs:
         path: dist
 
     - name: Import GPG private key
-      if: secrets.GPG_PRIVATE_KEY != ''
       shell: bash
       env:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       run: |
         set -euo pipefail
+        if [[ -z "${GPG_PRIVATE_KEY:-}" ]]; then
+          echo "No GPG private key provided, skipping import."
+          exit 0
+        fi
         install -m 700 -d ~/.gnupg
         printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
 
     - name: Sign release files
-      if: secrets.GPG_PRIVATE_KEY != ''
       shell: bash
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       run: |
         set -euo pipefail
+        if [[ -z "${GPG_PRIVATE_KEY:-}" ]]; then
+          echo "No GPG private key provided, skipping signing."
+          exit 0
+        fi
         cd dist
         shopt -s globstar nullglob
         files=( ${{ inputs.file_pattern }} )
@@ -68,8 +76,20 @@ jobs:
         prerelease: true
         overwrite: true
 
+    - name: Check signatures exist
+      id: check-sig
+      shell: bash
+      run: |
+        shopt -s globstar nullglob
+        sigs=( dist/${{ inputs.file_pattern }}.sig )
+        if (( ${#sigs[@]} )); then
+          echo "has_sig=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_sig=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Upload release signatures
-      if: secrets.GPG_PRIVATE_KEY != ''
+      if: steps.check-sig.outputs.has_sig == 'true'
       uses: svenstaro/upload-release-action@v2
       with:
         file: dist/${{ inputs.file_pattern }}.sig

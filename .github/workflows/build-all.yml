@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   public-key:
-    if: inputs.release_tag != '' && secrets.GPG_PRIVATE_KEY != ''
+    if: inputs.release_tag != ''
     uses: ./.github/workflows/pub-key.yml
     with:
       release_tag: ${{ inputs.release_tag }}
