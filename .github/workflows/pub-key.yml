@@ -8,7 +8,7 @@ on:
         type: string
     secrets:
       GPG_PRIVATE_KEY:
-        required: true
+        required: false
   workflow_dispatch:
     inputs:
       release_tag:
@@ -20,7 +20,8 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ubuntu-26.04
+    if: secrets.GPG_PRIVATE_KEY != ''
+    runs-on: ubuntu-latest
     steps:
     - name: Import GPG private key
       shell: bash

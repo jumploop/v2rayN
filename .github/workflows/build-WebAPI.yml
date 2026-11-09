@@ -615,7 +615,7 @@ jobs:
     name: Native API build (linux-loongarch64)
     needs: identity
     if: needs.identity.outputs.release == 'true'
-    runs-on: ubuntu-26.04-arm
+    runs-on: ubuntu-24.04-arm
     env:
       RID: linux-loongarch64
       V2RAYN_WEB_VERSION: ${{ needs.identity.outputs.version }}
