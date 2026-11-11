@@ -121,7 +121,7 @@ jobs:
           install_epel_from_dir "$ALMA" ||
           { echo "EPEL bootstrap failed (Fedora/Rocky/Alma)"; exit 1; }
 
-        dnf -y install sudo git rpm-build rpmdevtools dnf-plugins-core rsync findutils tar gzip unzip which
+        dnf -y --allowerasing install sudo git rpm-build rpmdevtools dnf-plugins-core rsync findutils tar gzip unzip which
         dnf repolist | grep -i epel || true
     - name: Checkout repo (for scripts)
       uses: actions/checkout@v7
@@ -220,7 +220,7 @@ jobs:
           install_epel_from_dir "$ALMA" ||
           { echo "EPEL bootstrap failed (Fedora/Rocky/Alma)"; exit 1; }
 
-        dnf -y install sudo git rpm-build rpmdevtools dnf-plugins-core rsync findutils tar gzip unzip which python3
+        dnf -y --allowerasing install sudo git rpm-build rpmdevtools dnf-plugins-core rsync findutils tar gzip unzip which python3
         dnf repolist | grep -i epel || true
 
     - name: Checkout repo (for scripts)
