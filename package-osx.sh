@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 Arch="$1"
 OutputPath="$2"
@@ -59,12 +60,17 @@ cat >"$PackagePath/v2rayN.app/Contents/Info.plist" <<-EOF
 </plist>
 EOF
 
-create-dmg \
-    --volname "v2rayN Installer" \
-    --window-size 700 420 \
-    --icon-size 100 \
-    --icon "v2rayN.app" 160 185 \
-    --hide-extension "v2rayN.app" \
-    --app-drop-link 500 185 \
-    "v2rayN-${Arch}.dmg" \
-    "$PackagePath/v2rayN.app"
+if command -v create-dmg >/dev/null 2>&1; then
+    create-dmg \
+        --volname "v2rayN Installer" \
+        --window-size 700 420 \
+        --icon-size 100 \
+        --icon "v2rayN.app" 160 185 \
+        --hide-extension "v2rayN.app" \
+        --app-drop-link 500 185 \
+        "v2rayN-${Arch}.dmg" \
+        "$PackagePath/v2rayN.app"
+else
+    ln -s /Applications "$PackagePath/Applications" || true
+    genisoimage -V "v2rayN Installer" -D -R -apple -no-pad -o "v2rayN-${Arch}.dmg" "$PackagePath"
+fi
