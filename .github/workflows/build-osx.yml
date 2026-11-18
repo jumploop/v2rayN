@@ -52,7 +52,7 @@ jobs:
     strategy:
       matrix:
         arch: [ x64, arm64 ]
-    runs-on: macos-latest
+    runs-on: macos-15
     env:
       Arch: |-
         ${{

@@ -24,7 +24,7 @@ jobs:
     runs-on: |-
       ${{
         case(
-          inputs.target == 'macos', 'macos-latest',
+          inputs.target == 'macos', 'macos-15',
           inputs.target == 'linux', 'ubuntu-24.04',
           inputs.target == 'windows', 'windows-latest',
           'ubuntu-latest'
