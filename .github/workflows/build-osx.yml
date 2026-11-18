@@ -16,9 +16,91 @@ permissions:
 
 jobs:
   build:
-    uses: ./.github/workflows/build.yml
-    with:
-      target: macos
+    name: build and package macOS
+    runs-on: macos-15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: 'recursive'
+        fetch-depth: '0'
+
+    - name: Purge SDKs
+      shell: pwsh
+      run: |
+        dotnet --list-sdks | % {
+          $_ -match '^\S+\s+\[(.+)\]$' > $null
+          $d = Join-Path $Matches[1] $_.Split()[0]
+          Write-Host "Removing $d"
+          sudo rm -rf "$d"
+        }
+        dotnet --list-sdks 2>$null; $LASTEXITCODE=0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Build AmazTool
+      shell: bash
+      working-directory: ./v2rayN
+      run: |
+        dotnet publish ./AmazTool/AmazTool.csproj -c Release -r osx-x64 -p:SelfContained=true -p:PublishTrimmed=true -p:IsAot=false -o ${{ github.workspace }}/x64
+        dotnet publish ./AmazTool/AmazTool.csproj -c Release -r osx-arm64 -p:SelfContained=true -p:PublishTrimmed=true -p:IsAot=false -o ${{ github.workspace }}/arm64
+
+    - name: Build v2rayN Avalonia
+      shell: bash
+      working-directory: ./v2rayN
+      run: |
+        dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj -c Release -r osx-x64 -p:SelfContained=true -p:IsAot=false -o ${{ github.workspace }}/x64
+        dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj -c Release -r osx-arm64 -p:SelfContained=true -p:IsAot=false -o ${{ github.workspace }}/arm64
+
+    - name: Remove Debug Symbols
+      shell: bash
+      run: |
+        find ${{ github.workspace }}/x64 ${{ github.workspace }}/arm64 -type f \( -name '*.pdb' -o -name '*.debug' -o -name '*.dbg' -o -name '*.sym' \) -delete
+        find ${{ github.workspace }}/x64 ${{ github.workspace }}/arm64 -name '*.dSYM' -exec rm -rf {} +
+
+    - name: Upload artifact x64
+      uses: actions/upload-artifact@v7
+      with:
+        name: x64
+        path: ${{ github.workspace }}/x64
+
+    - name: Upload artifact arm64
+      uses: actions/upload-artifact@v7
+      with:
+        name: arm64
+        path: ${{ github.workspace }}/arm64
+
+    - name: Setup create-dmg
+      if: inputs.release_tag != ''
+      run: brew install create-dmg
+
+    - name: Package dmg
+      if: inputs.release_tag != ''
+      run: |
+        chmod 755 package-osx.sh
+        cp -r ${{ github.workspace }}/x64 v2rayN-macos-64
+        cp -r ${{ github.workspace }}/arm64 v2rayN-macos-arm64
+        ./package-osx.sh macos-64 v2rayN-macos-64 ${{ inputs.release_tag }}
+        ./package-osx.sh macos-arm64 v2rayN-macos-arm64 ${{ inputs.release_tag }}
+
+    - name: Upload dmg artifact x64
+      if: inputs.release_tag != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-dmg-x64
+        path: v2rayN-macos-64.dmg
+        if-no-files-found: error
+
+    - name: Upload dmg artifact arm64
+      if: inputs.release_tag != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-dmg-arm64
+        path: v2rayN-macos-arm64.dmg
+        if-no-files-found: error
 
   release-zip:
     if: inputs.release_tag != ''
@@ -29,68 +111,10 @@ jobs:
       release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
-  build-aot:
-    uses: ./.github/workflows/build.yml
-    with:
-      target: macos
-      isAot: true
-
-  release-aot-zip:
-    if: inputs.release_tag != ''
-    needs: build-aot
-    uses: ./.github/workflows/package-zip.yml
-    with:
-      target: macos
-      release_tag: ${{ inputs.release_tag }}
-      isAot: true
-    secrets: inherit
-
-  dmg:
-    name: package and release macOS dmg
-    if: inputs.release_tag != ''
-    needs: build
-    strategy:
-      matrix:
-        arch: [ x64, arm64 ]
-    runs-on: macos-15
-    env:
-      Arch: |-
-        ${{
-          case(
-            matrix.arch == 'x64', '64',
-            matrix.arch
-          ) 
-        }} 
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v7
-
-    - name: Restore build artifacts
-      uses: actions/download-artifact@v8
-      with:
-        name: ${{ matrix.arch }}
-        path: v2rayN-macos-${{ env.Arch }}
-    
-    - name: Setup create-dmg
-      run: brew install create-dmg
-
-    - name: Ensure script permissions
-      run: chmod 755 package-osx.sh
-
-    - name: Package dmg
-      run: ./package-osx.sh macos-$Arch v2rayN-macos-$Arch ${{ inputs.release_tag }}
-
-    - name: Upload dmg artifact
-      uses: actions/upload-artifact@v7
-      with:
-        name: release-dmg-${{ matrix.arch }}
-        path: v2rayN*.dmg
-        if-no-files-found: error
-
   release-dmg:
     name: sign and upload macOS dmg
     if: inputs.release_tag != ''
-    needs: dmg
+    needs: build
     strategy:
       matrix:
         arch: [ x64, arm64 ]
@@ -101,3 +125,72 @@ jobs:
       file_pattern: '*.dmg'
     secrets:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+  build-aot:
+    name: build macOS AOT
+    needs: build
+    runs-on: macos-15
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: 'recursive'
+        fetch-depth: '0'
+
+    - name: Purge SDKs
+      shell: pwsh
+      run: |
+        dotnet --list-sdks | % {
+          $_ -match '^\S+\s+\[(.+)\]$' > $null
+          $d = Join-Path $Matches[1] $_.Split()[0]
+          Write-Host "Removing $d"
+          sudo rm -rf "$d"
+        }
+        dotnet --list-sdks 2>$null; $LASTEXITCODE=0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Build AmazTool AOT
+      shell: bash
+      working-directory: ./v2rayN
+      run: |
+        dotnet publish ./AmazTool/AmazTool.csproj -c Release -r osx-x64 -p:SelfContained=true -p:PublishTrimmed=true -p:IsAot=true -o ${{ github.workspace }}/x64-aot
+        dotnet publish ./AmazTool/AmazTool.csproj -c Release -r osx-arm64 -p:SelfContained=true -p:PublishTrimmed=true -p:IsAot=true -o ${{ github.workspace }}/arm64-aot
+
+    - name: Build v2rayN Avalonia AOT
+      shell: bash
+      working-directory: ./v2rayN
+      run: |
+        dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj -c Release -r osx-x64 -p:SelfContained=true -p:IsAot=true -o ${{ github.workspace }}/x64-aot
+        dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj -c Release -r osx-arm64 -p:SelfContained=true -p:IsAot=true -o ${{ github.workspace }}/arm64-aot
+
+    - name: Remove Debug Symbols
+      shell: bash
+      run: |
+        find ${{ github.workspace }}/x64-aot ${{ github.workspace }}/arm64-aot -type f \( -name '*.pdb' -o -name '*.debug' -o -name '*.dbg' -o -name '*.sym' \) -delete
+        find ${{ github.workspace }}/x64-aot ${{ github.workspace }}/arm64-aot -name '*.dSYM' -exec rm -rf {} +
+
+    - name: Upload artifact x64-aot
+      uses: actions/upload-artifact@v7
+      with:
+        name: x64-aot
+        path: ${{ github.workspace }}/x64-aot
+
+    - name: Upload artifact arm64-aot
+      uses: actions/upload-artifact@v7
+      with:
+        name: arm64-aot
+        path: ${{ github.workspace }}/arm64-aot
+
+  release-aot-zip:
+    if: inputs.release_tag != ''
+    needs: build-aot
+    uses: ./.github/workflows/package-zip.yml
+    with:
+      target: macos
+      release_tag: ${{ inputs.release_tag }}
+      isAot: true
+    secrets: inherit
