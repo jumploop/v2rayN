@@ -7,11 +7,17 @@ Version="$3"
 
 FileName="v2rayN-${Arch}.zip"
 wget -nv -O $FileName "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/$FileName"
-7z x $FileName
-cp -rf v2rayN-${Arch}/* $OutputPath
+rm -rf "core-${Arch}"
+7z x $FileName -o"core-${Arch}"
+if [ -d "core-${Arch}/v2rayN-${Arch}" ]; then
+    cp -rf "core-${Arch}/v2rayN-${Arch}"/* "$OutputPath/"
+else
+    cp -rf "core-${Arch}"/* "$OutputPath/"
+fi
 
 PackagePath="v2rayN-Package-${Arch}"
 mkdir -p "$PackagePath/v2rayN.app/Contents/Resources"
+rm -rf "$PackagePath/v2rayN.app/Contents/MacOS"
 cp -rf "$OutputPath" "$PackagePath/v2rayN.app/Contents/MacOS"
 cp -f "$PackagePath/v2rayN.app/Contents/MacOS/v2rayN.icns" "$PackagePath/v2rayN.app/Contents/Resources/AppIcon.icns"
 echo "When this file exists, app will not store configs under this folder" > "$PackagePath/v2rayN.app/Contents/MacOS/NotStoreConfigHere.txt"
@@ -71,6 +77,6 @@ if command -v create-dmg >/dev/null 2>&1; then
         "v2rayN-${Arch}.dmg" \
         "$PackagePath/v2rayN.app"
 else
-    ln -s /Applications "$PackagePath/Applications" || true
+    ln -sf /Applications "$PackagePath/Applications" || true
     genisoimage -V "v2rayN Installer" -D -R -apple -no-pad -o "v2rayN-${Arch}.dmg" "$PackagePath"
 fi

@@ -71,10 +71,11 @@ jobs:
       if: inputs.release_tag != ''
       run: |
         chmod 755 package-osx.sh
-        cp -r ${{ github.workspace }}/x64 v2rayN-macos-64
-        cp -r ${{ github.workspace }}/arm64 v2rayN-macos-arm64
-        ./package-osx.sh macos-64 v2rayN-macos-64 ${{ inputs.release_tag }}
-        ./package-osx.sh macos-arm64 v2rayN-macos-arm64 ${{ inputs.release_tag }}
+        rm -rf staging-macos-64 staging-macos-arm64
+        cp -r ${{ github.workspace }}/x64 staging-macos-64
+        cp -r ${{ github.workspace }}/arm64 staging-macos-arm64
+        ./package-osx.sh macos-64 staging-macos-64 ${{ inputs.release_tag }}
+        ./package-osx.sh macos-arm64 staging-macos-arm64 ${{ inputs.release_tag }}
 
     - name: Upload dmg artifact x64
       if: inputs.release_tag != ''
@@ -118,7 +119,7 @@ jobs:
 
   build-aot:
     name: build macOS AOT
-    needs: build
+    needs: [release-zip, release-dmg]
     runs-on: macos-15
     steps:
     - name: Checkout
